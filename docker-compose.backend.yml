@@ -1,0 +1,76 @@
+version: "3.8"
+
+services:
+  mysql-ventas:
+    image: mysql:8.0
+    container_name: mysql-ventas
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: ventas_db
+      MYSQL_USER: ventas_user
+      MYSQL_PASSWORD: ventas123
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_ventas_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql-despachos:
+    image: mysql:8.0
+    container_name: mysql-despachos
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: despachos_db
+      MYSQL_USER: despachos_user
+      MYSQL_PASSWORD: despachos123
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql_despachos_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  back-ventas:
+    image: bigsm0k3/back-ventas:latest
+    container_name: back-ventas
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      DB_ENDPOINT: mysql-ventas
+      DB_PORT: 3306
+      DB_NAME: ventas_db
+      DB_USERNAME: ventas_user
+      DB_PASSWORD: ventas123
+    depends_on:
+      mysql-ventas:
+        condition: service_healthy
+
+  back-despachos:
+    image: bigsm0k3/back-despachos:latest
+    container_name: back-despachos
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      DB_ENDPOINT: mysql-despachos
+      DB_PORT: 3306
+      DB_NAME: despachos_db
+      DB_USERNAME: despachos_user
+      DB_PASSWORD: despachos123
+    depends_on:
+      mysql-despachos:
+        condition: service_healthy
+
+volumes:
+  mysql_ventas_data:
+  mysql_despachos_data:

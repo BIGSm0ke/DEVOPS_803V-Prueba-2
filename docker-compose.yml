@@ -1,0 +1,92 @@
+version: "3.8"
+
+services:
+  mysql-ventas:
+    image: mysql:8.0
+    container_name: mysql-ventas
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_VENTAS_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_VENTAS_DATABASE:-ventas_db}
+      MYSQL_USER: ${MYSQL_VENTAS_USER}
+      MYSQL_PASSWORD: ${MYSQL_VENTAS_PASSWORD}
+    ports:
+      - "${MYSQL_VENTAS_PORT:-3307}:3306"
+    volumes:
+      - mysql_ventas_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql-despachos:
+    image: mysql:8.0
+    container_name: mysql-despachos
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_DESPACHOS_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DESPACHOS_DATABASE:-despachos_db}
+      MYSQL_USER: ${MYSQL_DESPACHOS_USER}
+      MYSQL_PASSWORD: ${MYSQL_DESPACHOS_PASSWORD}
+    ports:
+      - "${MYSQL_DESPACHOS_PORT:-3308}:3306"
+    volumes:
+      - mysql_despachos_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  back-ventas:
+    build:
+      context: ./back-Ventas_SpringBoot/Springboot-API-REST
+    image: ${DOCKER_USERNAME:-back-ventas}:${IMAGE_TAG:-latest}
+    container_name: back-ventas
+    restart: unless-stopped
+    ports:
+      - "${BACK_VENTAS_PORT:-8080}:8080"
+    environment:
+      DB_ENDPOINT: mysql-ventas
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_VENTAS_DATABASE:-ventas_db}
+      DB_USERNAME: ${MYSQL_VENTAS_USER}
+      DB_PASSWORD: ${MYSQL_VENTAS_PASSWORD}
+    depends_on:
+      mysql-ventas:
+        condition: service_healthy
+
+  back-despachos:
+    build:
+      context: ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
+    image: ${DOCKER_USERNAME:-back-despachos}:${IMAGE_TAG:-latest}
+    container_name: back-despachos
+    restart: unless-stopped
+    ports:
+      - "${BACK_DESPACHOS_PORT:-8081}:8081"
+    environment:
+      DB_ENDPOINT: mysql-despachos
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DESPACHOS_DATABASE:-despachos_db}
+      DB_USERNAME: ${MYSQL_DESPACHOS_USER}
+      DB_PASSWORD: ${MYSQL_DESPACHOS_PASSWORD}
+    depends_on:
+      mysql-despachos:
+        condition: service_healthy
+
+  front-despacho:
+    build:
+      context: ./front_despacho
+    image: ${DOCKER_USERNAME:-front-despacho}:${IMAGE_TAG:-latest}
+    container_name: front-despacho
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    depends_on:
+      - back-ventas
+      - back-despachos
+
+volumes:
+  mysql_ventas_data:
+  mysql_despachos_data:

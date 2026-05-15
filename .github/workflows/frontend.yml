@@ -1,0 +1,99 @@
+name: Frontend CI/CD
+
+on:
+  push:
+    branches: [deploy]
+    paths:
+      - "front_despacho/**"
+
+env:
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  ci-cd:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20 with cache
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "./front_despacho/package-lock.json"
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./front_despacho
+
+      - name: Run linter
+        run: npm run lint
+        working-directory: ./front_despacho
+
+      - name: Build application
+        run: npm run build
+        working-directory: ./front_despacho
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image to Docker Hub
+        uses: docker/build-push-action@v6
+        with:
+          context: ./front_despacho
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/front-despacho:${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/front-despacho:latest
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: "DOCKER_USERNAME,DOCKER_PASSWORD,IMAGE_TAG,MYSQL_VENTAS_ROOT_PASSWORD,MYSQL_VENTAS_DATABASE,MYSQL_VENTAS_USER,MYSQL_VENTAS_PASSWORD,MYSQL_DESPACHOS_ROOT_PASSWORD,MYSQL_DESPACHOS_DATABASE,MYSQL_DESPACHOS_USER,MYSQL_DESPACHOS_PASSWORD"
+          script: |
+            echo "=== Actualizando repositorio en EC2 ==="
+            cd ~/app
+            git pull origin deploy
+
+            echo "=== Autenticando en Docker Hub ==="
+            echo "${DOCKER_PASSWORD}" | docker login --username "${DOCKER_USERNAME}" --password-stdin
+
+            echo "=== Generando .env ==="
+            cat > .env << EOF
+            DOCKER_USERNAME=${DOCKER_USERNAME}
+            IMAGE_TAG=${IMAGE_TAG}
+            MYSQL_VENTAS_ROOT_PASSWORD=${MYSQL_VENTAS_ROOT_PASSWORD}
+            MYSQL_VENTAS_DATABASE=${MYSQL_VENTAS_DATABASE}
+            MYSQL_VENTAS_USER=${MYSQL_VENTAS_USER}
+            MYSQL_VENTAS_PASSWORD=${MYSQL_VENTAS_PASSWORD}
+            MYSQL_VENTAS_PORT=3307
+            MYSQL_DESPACHOS_ROOT_PASSWORD=${MYSQL_DESPACHOS_ROOT_PASSWORD}
+            MYSQL_DESPACHOS_DATABASE=${MYSQL_DESPACHOS_DATABASE}
+            MYSQL_DESPACHOS_USER=${MYSQL_DESPACHOS_USER}
+            MYSQL_DESPACHOS_PASSWORD=${MYSQL_DESPACHOS_PASSWORD}
+            MYSQL_DESPACHOS_PORT=3308
+            BACK_VENTAS_PORT=8080
+            BACK_DESPACHOS_PORT=8081
+            FRONTEND_PORT=80
+            EOF
+
+            echo "=== Descargando nuevas imagenes ==="
+            docker compose pull
+
+            echo "=== Reiniciando servicios ==="
+            docker compose down
+            docker compose up -d
+
+            echo "=== Limpiando imagenes antiguas ==="
+            docker image prune -f
+
+            echo "=== Deploy completado ==="
