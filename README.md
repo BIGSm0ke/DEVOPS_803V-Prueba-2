@@ -1,5 +1,5 @@
 # DEVOPS_803V-Prueba-2 — Innovatech Platform
-cambio xd
+
 ## Arquitectura
 
 ```
